@@ -65,7 +65,7 @@ show_member_split = st.sidebar.checkbox("Show member/casual split in monthly cha
 # -----------------------------
 # Chart 3. Trips by Hour of Day
 # -----------------------------
-st.subheader("Chart 3. Trips by Hour of Day (Weekday vs Weekend)")
+st.subheader("Trips by Hour of Day (Weekday vs Weekend)")
 
 hour_wk = hourly.groupby(["hour", "is_weekend"], as_index=False)["total_rides"].sum()
 hour_wk["day_type"] = hour_wk["is_weekend"].map({True: "Weekend", False: "Weekday"})
@@ -86,7 +86,7 @@ st.write(
 # -----------------------------
 # Chart 4. Trips by Day of Week
 # -----------------------------
-st.subheader("Chart 4. Trips by Day of Week")
+st.subheader("Trips by Day of Week")
 
 by_day = hourly.groupby("day_of_week", as_index=False, observed=False)["total_rides"].sum()
 
@@ -105,7 +105,7 @@ st.write(
 # -----------------------------
 # Chart 5. Trips by Month / Season
 # -----------------------------
-st.subheader("Chart 5. Trips by Month / Season")
+st.subheader("Trips by Month / Season")
 
 by_month = (
     monthly.groupby(["month", "month_name"], as_index=False)["total_rides"]
@@ -176,7 +176,7 @@ st.write(
 # -----------------------------
 # Chart 6. Hour x Day Heatmap
 # -----------------------------
-st.subheader("Chart 6. Hour × Day Heatmap")
+st.subheader("Hour × Day Heatmap")
 
 pivot = (
     hourly.groupby(["day_of_week", "hour"], observed=False)["total_rides"]
@@ -206,7 +206,7 @@ st.write(
 # -----------------------------
 # Chart 7. Member vs Casual Usage Pattern
 # -----------------------------
-st.subheader("Chart 7. Member vs Casual Usage Pattern")
+st.subheader("Member vs Casual Usage Pattern")
 
 by_hour_mc = hourly.groupby(["hour", "member_casual"], as_index=False)["total_rides"].sum()
 by_day_mc = hourly.groupby(["day_of_week", "member_casual"], as_index=False, observed=False)["total_rides"].sum()
