@@ -13,24 +13,77 @@ st.write(
 # -----------------------------
 # Load data
 # -----------------------------
-od = pd.read_csv("data/od_edges.csv")
+@st.cache_data
+def load_data():
+    return pd.read_csv("data/od_edges.csv")
+
+od = load_data()
+
+# -----------------------------
+# Sidebar filters
+# -----------------------------
+st.sidebar.header("Interactive Filters")
+
+top_pair_n = st.sidebar.slider(
+    "Top routes to show",
+    min_value=5,
+    max_value=20,
+    value=10,
+    step=1
+)
+
+top_station_n = st.sidebar.slider(
+    "Top stations to show",
+    min_value=5,
+    max_value=15,
+    value=10,
+    step=1
+)
+
+top_n_edges = st.sidebar.slider(
+    "Network map: top edges",
+    min_value=10,
+    max_value=50,
+    value=30,
+    step=5
+)
+
+min_trip_value = int(od["trip_count"].min())
+max_trip_value = int(od["trip_count"].max())
+
+default_min_trips = 300
+if default_min_trips > max_trip_value:
+    default_min_trips = min_trip_value
+
+min_trips = st.sidebar.slider(
+    "Minimum trips for network map",
+    min_value=min_trip_value,
+    max_value=max_trip_value,
+    value=default_min_trips,
+    step=10 if max_trip_value >= 100 else 1
+)
 
 # -----------------------------
 # 1. Top Station-to-Station Flows
 # -----------------------------
-st.subheader("Top 10 Station-to-Station Flows")
+st.subheader("Top Station-to-Station Flows")
 
-od["route"] = od["start_station_name"] + " → " + od["end_station_name"]
-top_pairs = od.sort_values("trip_count", ascending=False).head(10)
+od_pairs = od.copy()
+od_pairs["route"] = od_pairs["start_station_name"] + " → " + od_pairs["end_station_name"]
+top_pairs = od_pairs.sort_values("trip_count", ascending=False).head(top_pair_n)
 
 fig_pairs = px.bar(
     top_pairs.sort_values("trip_count", ascending=True),
     x="trip_count",
     y="route",
     orientation="h",
-    title="Top 10 Station-to-Station Flows",
-    labels={"trip_count": "Number of Trips", "route": "Station Pair"}
+    title=f"Top {top_pair_n} Station-to-Station Flows",
+    labels={"trip_count": "Number of Trips", "route": "Station Pair"},
+    height=500
 )
+
+fig_pairs.update_traces(marker_color="#636EFA")
+fig_pairs.update_layout(template="plotly")
 
 st.plotly_chart(fig_pairs, use_container_width=True)
 
@@ -41,9 +94,9 @@ st.write(
 )
 
 # -----------------------------
-# 2. Top 10 Most Connected Stations
+# 2. Top Most Connected Stations
 # -----------------------------
-st.subheader("Top 10 Most Connected Stations")
+st.subheader("Top Most Connected Stations")
 
 outflow = (
     od.groupby(["start_station_name", "start_station_id"], as_index=False)
@@ -63,19 +116,28 @@ inflow = (
     })
 )
 
-station_flow = pd.merge(outflow, inflow, on=["station_name", "station_id"], how="outer").fillna(0)
+station_flow = pd.merge(
+    outflow, inflow,
+    on=["station_name", "station_id"],
+    how="outer"
+).fillna(0)
+
 station_flow["total_flow"] = station_flow["outflow"] + station_flow["inflow"]
 
-top_stations = station_flow.sort_values("total_flow", ascending=False).head(10)
+top_stations = station_flow.sort_values("total_flow", ascending=False).head(top_station_n)
 
 fig_stations = px.bar(
     top_stations.sort_values("total_flow", ascending=True),
     x="total_flow",
     y="station_name",
     orientation="h",
-    title="Top 10 Most Connected Stations",
-    labels={"total_flow": "Total Flow (In + Out)", "station_name": "Station"}
+    title=f"Top {top_station_n} Most Connected Stations",
+    labels={"total_flow": "Total Flow (In + Out)", "station_name": "Station"},
+    height=500
 )
+
+fig_stations.update_traces(marker_color="#636EFA")
+fig_stations.update_layout(template="plotly")
 
 st.plotly_chart(fig_stations, use_container_width=True)
 
@@ -88,78 +150,82 @@ st.write(
 # -----------------------------
 # 3. Filtered Network Map
 # -----------------------------
-st.subheader("Filtered Citi Bike Station Network on Map")
+st.subheader("Filtered Station Network on Map")
 
-top_edges = od.sort_values("trip_count", ascending=False).head(50).copy()
+filtered_edges = od[od["trip_count"] >= min_trips].copy()
+top_edges = filtered_edges.sort_values("trip_count", ascending=False).head(top_n_edges).copy()
 
-fig_map = go.Figure()
-max_weight = top_edges["trip_count"].max()
+if top_edges.empty:
+    st.warning("No edges match the current filter settings. Lower the minimum trip threshold.")
+else:
+    fig_map = go.Figure()
+    max_weight = top_edges["trip_count"].max()
 
-for _, row in top_edges.iterrows():
-    line_width = 1 + 8 * (row["trip_count"] / max_weight)
+    for _, row in top_edges.iterrows():
+        line_width = 1 + 8 * (row["trip_count"] / max_weight)
+
+        fig_map.add_trace(
+            go.Scattermapbox(
+                mode="lines",
+                lon=[row["start_lng"], row["end_lng"]],
+                lat=[row["start_lat"], row["end_lat"]],
+                line=dict(width=line_width, color="rgba(200, 50, 50, 0.45)"),
+                hoverinfo="text",
+                text=f"{row['start_station_name']} → {row['end_station_name']}<br>Trips: {row['trip_count']}",
+                showlegend=False
+            )
+        )
+
+    node_sizes_dict = station_flow.set_index("station_name")["total_flow"].to_dict()
+    max_node_flow = station_flow["total_flow"].max()
+
+    nodes_in_top = set(top_edges["start_station_name"]).union(set(top_edges["end_station_name"]))
+
+    node_lon = []
+    node_lat = []
+    node_text = []
+    node_size = []
+
+    for station in nodes_in_top:
+        start_match = top_edges[top_edges["start_station_name"] == station]
+        end_match = top_edges[top_edges["end_station_name"] == station]
+
+        if not start_match.empty:
+            lon = start_match.iloc[0]["start_lng"]
+            lat = start_match.iloc[0]["start_lat"]
+        else:
+            lon = end_match.iloc[0]["end_lng"]
+            lat = end_match.iloc[0]["end_lat"]
+
+        node_lon.append(lon)
+        node_lat.append(lat)
+        node_text.append(f"{station}<br>Total flow: {node_sizes_dict.get(station, 0):,.0f}")
+        node_size.append(8 + 22 * (node_sizes_dict.get(station, 0) / max_node_flow))
 
     fig_map.add_trace(
         go.Scattermapbox(
-            mode="lines",
-            lon=[row["start_lng"], row["end_lng"]],
-            lat=[row["start_lat"], row["end_lat"]],
-            line=dict(width=line_width, color="rgba(200, 50, 50, 0.45)"),
+            mode="markers",
+            lon=node_lon,
+            lat=node_lat,
+            marker=dict(size=node_size, color="royalblue", opacity=0.8),
+            text=node_text,
             hoverinfo="text",
-            text=f"{row['start_station_name']} → {row['end_station_name']}<br>Trips: {row['trip_count']}",
             showlegend=False
         )
     )
 
-node_sizes_dict = station_flow.set_index("station_name")["total_flow"].to_dict()
-max_node_flow = station_flow["total_flow"].max()
-
-nodes_in_top = set(top_edges["start_station_name"]).union(set(top_edges["end_station_name"]))
-
-node_lon = []
-node_lat = []
-node_text = []
-node_size = []
-
-for station in nodes_in_top:
-    start_match = top_edges[top_edges["start_station_name"] == station]
-    end_match = top_edges[top_edges["end_station_name"] == station]
-
-    if not start_match.empty:
-        lon = start_match.iloc[0]["start_lng"]
-        lat = start_match.iloc[0]["start_lat"]
-    else:
-        lon = end_match.iloc[0]["end_lng"]
-        lat = end_match.iloc[0]["end_lat"]
-
-    node_lon.append(lon)
-    node_lat.append(lat)
-    node_text.append(f"{station}<br>Total flow: {node_sizes_dict.get(station, 0):,.0f}")
-    node_size.append(8 + 22 * (node_sizes_dict.get(station, 0) / max_node_flow))
-
-fig_map.add_trace(
-    go.Scattermapbox(
-        mode="markers",
-        lon=node_lon,
-        lat=node_lat,
-        marker=dict(size=node_size, color="royalblue", opacity=0.8),
-        text=node_text,
-        hoverinfo="text",
-        showlegend=False
+    fig_map.update_layout(
+        title=f"Filtered Citi Bike Station Network on Map (Top {top_n_edges} Flows, Min {min_trips} Trips)",
+        mapbox=dict(
+            style="carto-positron",
+            center=dict(lat=40.725, lon=-74.045),
+            zoom=12.2
+        ),
+        margin=dict(l=20, r=20, t=60, b=20),
+        height=750
     )
-)
 
-fig_map.update_layout(
-    title="Filtered Citi Bike Station Network on Map (Top 50 Flows)",
-    mapbox=dict(
-        style="carto-positron",
-        center=dict(lat=40.725, lon=-74.045),
-        zoom=12.2
-    ),
-    margin=dict(l=20, r=20, t=60, b=20),
-    height=750
-)
-
-st.plotly_chart(fig_map, use_container_width=True)
+    st.plotly_chart(fig_map, use_container_width=True)
 
 st.write(
     "The filtered network map shows that the strongest Citi Bike connections are concentrated around a few key hubs, "
@@ -168,9 +234,9 @@ st.write(
 )
 
 # -----------------------------
-# 4. Top 10 Stations by Weighted Degree
+# 4. Top Stations by Degree
 # -----------------------------
-st.subheader("Top 10 Stations by Weighted Degree")
+st.subheader("Top Stations by Number of Connections")
 
 G = nx.DiGraph()
 
@@ -190,34 +256,28 @@ metrics_df = pd.DataFrame({
     "degree": [degree_dict[s] for s in weighted_degree_dict.keys()]
 })
 
-metrics_df = metrics_df.sort_values("weighted_degree", ascending=False)
-top_weighted = metrics_df.head(10).copy()
-top_weighted["station_label"] = top_weighted["station_name"]
+top_degree = metrics_df.sort_values("degree", ascending=False).head(top_station_n).copy()
 
-fig_weighted = px.bar(
-    top_weighted.sort_values("weighted_degree", ascending=True),
-    x="weighted_degree",
-    y="station_label",
+fig_degree = px.bar(
+    top_degree.sort_values("degree", ascending=True),
+    x="degree",
+    y="station_name",
     orientation="h",
-    title="Top 10 Stations by Weighted Degree",
-    labels={
-        "weighted_degree": "Weighted Degree",
-        "station_label": "Station"
-    },
-    height=650
+    title=f"Top {top_station_n} Stations by Number of Connections",
+    labels={"degree": "Number of Connections", "station_name": "Station"},
+    height=500
 )
 
-fig_weighted.update_traces(marker_color="#636EFA")
-fig_weighted.update_layout(
+fig_degree.update_traces(marker_color="#636EFA")
+fig_degree.update_layout(
     template="plotly",
     margin=dict(l=260, r=40, t=60, b=40)
 )
-fig_weighted.update_yaxes(title=None)
+fig_degree.update_yaxes(title=None)
 
-st.plotly_chart(fig_weighted, use_container_width=True)
+st.plotly_chart(fig_degree, use_container_width=True)
 
 st.write(
-    "Weighted degree shows which stations are the most central from a network perspective. "
-    "Grove St PATH and Hoboken Terminal again rank highest, meaning they are not only busy "
-    "but also strongly connected within the wider system."
+    "This chart focuses on how many different stations each node is connected to, rather than total trip volume. "
+    "Compared with total flow, degree better shows the breadth of a station’s network reach."
 )
