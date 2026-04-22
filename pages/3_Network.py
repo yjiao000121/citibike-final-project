@@ -246,20 +246,17 @@ matrix_top_n = st.sidebar.slider(
     step=1
 )
 
-# choose top active stations
 top_station_list = (
     station_flow.sort_values("total_flow", ascending=False)
     .head(matrix_top_n)["station_name"]
     .tolist()
 )
 
-# keep only edges among selected stations
 matrix_df = od[
     od["start_station_name"].isin(top_station_list) &
     od["end_station_name"].isin(top_station_list)
 ].copy()
 
-# build matrix
 adj_matrix = (
     matrix_df.pivot_table(
         index="start_station_name",
@@ -271,7 +268,6 @@ adj_matrix = (
     .reindex(index=top_station_list, columns=top_station_list, fill_value=0)
 )
 
-# shorten long station labels
 label_map = {
     "Hoboken Terminal - River St & Hudson Pl": "Hoboken Terminal (River St)",
     "Hoboken Terminal - Hudson St & Hudson Pl": "Hoboken Terminal (Hudson St)",
@@ -292,16 +288,21 @@ fig_matrix = px.imshow(
     title=f"Adjacency Matrix of Top {matrix_top_n} Stations"
 )
 
-# make labels horizontal
-fig_matrix.update_xaxes(tickangle=0)
-fig_matrix.update_yaxes(tickangle=0)
+fig_matrix.update_xaxes(
+    tickangle=45,
+    automargin=True,
+    tickfont=dict(size=10)
+)
 
-# improve layout
+fig_matrix.update_yaxes(
+    tickangle=0,
+    automargin=True,
+    tickfont=dict(size=10)
+)
+
 fig_matrix.update_layout(
     height=700,
-    margin=dict(l=220, r=40, t=60, b=140),
-    xaxis_tickfont=dict(size=10),
-    yaxis_tickfont=dict(size=10)
+    margin=dict(l=220, r=40, t=60, b=160)
 )
 
 st.plotly_chart(fig_matrix, use_container_width=True)
