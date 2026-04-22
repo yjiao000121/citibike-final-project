@@ -4,7 +4,7 @@ import networkx as nx
 import plotly.express as px
 import plotly.graph_objects as go
 
-st.title("Network Analysis")
+st.title("Section 3. Network Analysis")
 st.write(
     "This page examines Citi Bike station connectivity in the Jersey City–Hoboken area "
     "using trip data from January to March 2025."
