@@ -234,7 +234,7 @@ st.write(
 )
 
 # -----------------------------
-# 4. Adjacency Matrix Heatmap
+# Adjacency Matrix Heatmap
 # -----------------------------
 st.subheader("Adjacency Matrix Heatmap")
 
@@ -246,20 +246,20 @@ matrix_top_n = st.sidebar.slider(
     step=1
 )
 
-# choose the most active stations first
+# choose top active stations
 top_station_list = (
     station_flow.sort_values("total_flow", ascending=False)
     .head(matrix_top_n)["station_name"]
     .tolist()
 )
 
-# keep only edges among these top stations
+# keep only edges among selected stations
 matrix_df = od[
     od["start_station_name"].isin(top_station_list) &
     od["end_station_name"].isin(top_station_list)
 ].copy()
 
-# build adjacency matrix
+# build matrix
 adj_matrix = (
     matrix_df.pivot_table(
         index="start_station_name",
@@ -271,25 +271,43 @@ adj_matrix = (
     .reindex(index=top_station_list, columns=top_station_list, fill_value=0)
 )
 
+# shorten long station labels
+label_map = {
+    "Hoboken Terminal - River St & Hudson Pl": "Hoboken Terminal (River St)",
+    "Hoboken Terminal - Hudson St & Hudson Pl": "Hoboken Terminal (Hudson St)",
+    "City Hall - Washington St & 1 St": "City Hall",
+    "8 St & Washington St": "8 St & Washington",
+    "River St & 1 St": "River St & 1 St"
+}
+
+short_index = [label_map.get(x, x) for x in adj_matrix.index]
+short_cols = [label_map.get(x, x) for x in adj_matrix.columns]
+
 fig_matrix = px.imshow(
     adj_matrix,
     labels=dict(x="Destination Station", y="Origin Station", color="Trips"),
-    x=adj_matrix.columns,
-    y=adj_matrix.index,
+    x=short_cols,
+    y=short_index,
     color_continuous_scale="YlOrRd",
     title=f"Adjacency Matrix of Top {matrix_top_n} Stations"
 )
 
+# make labels horizontal
+fig_matrix.update_xaxes(tickangle=0)
+fig_matrix.update_yaxes(tickangle=0)
+
+# improve layout
 fig_matrix.update_layout(
     height=700,
-    xaxis_tickangle=45
+    margin=dict(l=220, r=40, t=60, b=140),
+    xaxis_tickfont=dict(size=10),
+    yaxis_tickfont=dict(size=10)
 )
 
 st.plotly_chart(fig_matrix, use_container_width=True)
 
 st.write(
     "This heatmap shows trip volume between the most active stations in the network. "
-    "Darker cells indicate stronger station-to-station connections, making it easier to compare "
-    "pairwise relationships than in a crowded network graph."
+    "Darker cells indicate stronger station-to-station connections, making pairwise relationships "
+    "easier to compare than in a crowded network graph."
 )
-
