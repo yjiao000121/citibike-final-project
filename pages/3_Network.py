@@ -234,50 +234,61 @@ st.write(
 )
 
 # -----------------------------
-# 4. Top Stations by Degree
+# 4. Adjacency Matrix Heatmap
 # -----------------------------
-st.subheader("Top Stations by Number of Connections")
+st.subheader("Adjacency Matrix Heatmap")
 
-G = nx.DiGraph()
+matrix_top_n = st.sidebar.slider(
+    "Heatmap: top stations",
+    min_value=5,
+    max_value=15,
+    value=10,
+    step=1
+)
 
-for _, row in od.iterrows():
-    G.add_edge(
-        row["start_station_name"],
-        row["end_station_name"],
-        weight=row["trip_count"]
+# choose the most active stations first
+top_station_list = (
+    station_flow.sort_values("total_flow", ascending=False)
+    .head(matrix_top_n)["station_name"]
+    .tolist()
+)
+
+# keep only edges among these top stations
+matrix_df = od[
+    od["start_station_name"].isin(top_station_list) &
+    od["end_station_name"].isin(top_station_list)
+].copy()
+
+# build adjacency matrix
+adj_matrix = (
+    matrix_df.pivot_table(
+        index="start_station_name",
+        columns="end_station_name",
+        values="trip_count",
+        aggfunc="sum",
+        fill_value=0
     )
-
-weighted_degree_dict = dict(G.degree(weight="weight"))
-degree_dict = dict(G.degree())
-
-metrics_df = pd.DataFrame({
-    "station_name": list(weighted_degree_dict.keys()),
-    "weighted_degree": list(weighted_degree_dict.values()),
-    "degree": [degree_dict[s] for s in weighted_degree_dict.keys()]
-})
-
-top_degree = metrics_df.sort_values("degree", ascending=False).head(top_station_n).copy()
-
-fig_degree = px.bar(
-    top_degree.sort_values("degree", ascending=True),
-    x="degree",
-    y="station_name",
-    orientation="h",
-    title=f"Top {top_station_n} Stations by Number of Connections",
-    labels={"degree": "Number of Connections", "station_name": "Station"},
-    height=500
+    .reindex(index=top_station_list, columns=top_station_list, fill_value=0)
 )
 
-fig_degree.update_traces(marker_color="#636EFA")
-fig_degree.update_layout(
-    template="plotly",
-    margin=dict(l=260, r=40, t=60, b=40)
+fig_matrix = px.imshow(
+    adj_matrix,
+    labels=dict(x="Destination Station", y="Origin Station", color="Trips"),
+    x=adj_matrix.columns,
+    y=adj_matrix.index,
+    color_continuous_scale="YlOrRd",
+    title=f"Adjacency Matrix of Top {matrix_top_n} Stations"
 )
-fig_degree.update_yaxes(title=None)
 
-st.plotly_chart(fig_degree, use_container_width=True)
+fig_matrix.update_layout(
+    height=700,
+    xaxis_tickangle=45
+)
+
+st.plotly_chart(fig_matrix, use_container_width=True)
 
 st.write(
-    "This chart focuses on how many different stations each node is connected to, rather than total trip volume. "
-    "Compared with total flow, degree better shows the breadth of a station’s network reach."
+    "This heatmap shows trip volume between the most active stations in the network. "
+    "Darker cells indicate stronger station-to-station connections, making it easier to compare "
+    "pairwise relationships than in a crowded network graph."
 )
