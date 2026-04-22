@@ -292,3 +292,78 @@ st.write(
     "Darker cells indicate stronger station-to-station connections, making it easier to compare "
     "pairwise relationships than in a crowded network graph."
 )
+
+import pandas as pd
+import networkx as nx
+import matplotlib.pyplot as plt
+
+# load data
+od = pd.read_csv("od_edges.csv")
+
+# optional: combine both directions so the graph is cleaner
+od["station_a"] = od[["start_station_name", "end_station_name"]].min(axis=1)
+od["station_b"] = od[["start_station_name", "end_station_name"]].max(axis=1)
+
+edges_undirected = (
+    od.groupby(["station_a", "station_b"], as_index=False)
+    .agg(total_trips=("trip_count", "sum"))
+    .sort_values("total_trips", ascending=False)
+)
+
+# keep only strongest edges so the graph is readable
+top_edges = edges_undirected.head(80).copy()
+
+# build graph
+G = nx.Graph()
+
+for _, row in top_edges.iterrows():
+    G.add_edge(
+        row["station_a"],
+        row["station_b"],
+        weight=row["total_trips"]
+    )
+
+# node strength = weighted degree
+weighted_degree = dict(G.degree(weight="weight"))
+
+# scale node sizes
+node_sizes = [weighted_degree[node] * 0.8 for node in G.nodes()]
+
+# edge widths
+edge_weights = [G[u][v]["weight"] for u, v in G.edges()]
+max_w = max(edge_weights)
+edge_widths = [0.5 + 4 * (w / max_w) for w in edge_weights]
+
+# choose labels only for biggest nodes
+top_label_nodes = sorted(weighted_degree, key=weighted_degree.get, reverse=True)[:10]
+labels = {node: node if node in top_label_nodes else "" for node in G.nodes()}
+
+# spring layout
+pos = nx.spring_layout(G, k=0.6, seed=42)
+
+# plot
+plt.figure(figsize=(14, 10))
+
+nx.draw_networkx_edges(
+    G, pos,
+    width=edge_widths,
+    alpha=0.25,
+    edge_color="gray"
+)
+
+nx.draw_networkx_nodes(
+    G, pos,
+    node_size=node_sizes,
+    node_color="cornflowerblue",
+    alpha=0.85
+)
+
+nx.draw_networkx_labels(
+    G, pos,
+    labels=labels,
+    font_size=9
+)
+
+plt.title("Citi Bike Station Network", fontsize=16)
+plt.axis("off")
+plt.show()
