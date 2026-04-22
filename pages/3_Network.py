@@ -246,17 +246,20 @@ matrix_top_n = st.sidebar.slider(
     step=1
 )
 
+# choose the most active stations first
 top_station_list = (
     station_flow.sort_values("total_flow", ascending=False)
     .head(matrix_top_n)["station_name"]
     .tolist()
 )
 
+# keep only edges among these top stations
 matrix_df = od[
     od["start_station_name"].isin(top_station_list) &
     od["end_station_name"].isin(top_station_list)
 ].copy()
 
+# build adjacency matrix
 adj_matrix = (
     matrix_df.pivot_table(
         index="start_station_name",
@@ -267,10 +270,6 @@ adj_matrix = (
     )
     .reindex(index=top_station_list, columns=top_station_list, fill_value=0)
 )
-
-short_labels = {name: name[:25] + "..." if len(name) > 25 else name for name in top_station_list}
-adj_matrix.index = [short_labels[name] for name in adj_matrix.index]
-adj_matrix.columns = [short_labels[name] for name in adj_matrix.columns]
 
 fig_matrix = px.imshow(
     adj_matrix,
@@ -289,7 +288,7 @@ fig_matrix.update_layout(
 st.plotly_chart(fig_matrix, use_container_width=True)
 
 st.write(
-    "This heatmap highlights connection strength among the most active stations. "
-    "Compared with the network map, it makes it easier to see which pairs of stations "
-    "have especially strong relationships."
+    "This heatmap shows trip volume between the most active stations in the network. "
+    "Darker cells indicate stronger station-to-station connections, making it easier to compare "
+    "pairwise relationships than in a crowded network graph."
 )
